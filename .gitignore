@@ -1,0 +1,10 @@
+.RData
+.Rhistory
+*.results
+.png
+.mov
+*cache/
+presentations/
+movies/
+.Rproj.user
+packrat/lib*/
