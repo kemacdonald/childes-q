@@ -86,6 +86,12 @@ Source: CRAN
 Version: 0.6.12
 Hash: e53fb8c58673df868183697e39a6a4d6
 
+Package: directlabels
+Source: CRAN
+Version: 2015.12.16
+Hash: 0fa8f0269adeffc49f70b45e220ef33c
+Requires: quadprog
+
 Package: dplyr
 Source: CRAN
 Version: 0.5.0
@@ -114,6 +120,12 @@ Source: CRAN
 Version: 2.2.1
 Hash: 46e5cb78836848aa44655e577433f54b
 Requires: digest, gtable, lazyeval, plyr, reshape2, scales, tibble
+
+Package: ggthemes
+Source: CRAN
+Version: 3.4.0
+Hash: e9f85417507c5352fc05de654bb6f1ab
+Requires: assertthat, colorspace, ggplot2, scales
 
 Package: gtable
 Source: CRAN
@@ -163,6 +175,16 @@ Package: labeling
 Source: CRAN
 Version: 0.3
 Hash: ecf589b42cd284b03a4beb9665482d3e
+
+Package: langcog
+Source: github
+Version: 0.1.9001
+Hash: fae1635d843b7ff3ff167cb957b2eb22
+Requires: assertthat, dplyr, ggplot2, lazyeval, quadprog
+GithubRepo: langcog
+GithubUsername: langcog
+GithubRef: master
+GithubSha1: 70e5e76cc8197e9073063963af18ed7ddee3b06d
 
 Package: lazyeval
 Source: CRAN
@@ -235,6 +257,11 @@ Source: CRAN
 Version: 0.2.2
 Hash: e06b50a541f3a0965edd8e8533ff28ac
 Requires: BH, Rcpp, dplyr, lazyeval, magrittr
+
+Package: quadprog
+Source: CRAN
+Version: 1.5-5
+Hash: 69000b7dc41b09977dcf781f909d235c
 
 Package: readr
 Source: CRAN

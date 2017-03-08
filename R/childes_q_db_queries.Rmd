@@ -1,5 +1,5 @@
 ---
-title: "Chiles-q"
+title: "Childes-q"
 author: "Kyle MacDonald"
 date: "2/20/2017"
 output: html_document
@@ -8,6 +8,7 @@ output: html_document
 ## Set up
 
 ```{r}
+rm(list=ls())
 library(magrittr)
 library(stringr)
 library(tidyverse)
@@ -15,6 +16,27 @@ library(RMySQL)
 library(directlabels)
 theme_set(ggthemes::theme_few())
 ```
+
+# dplyr style
+
+```{r}
+db <- src_mysql(host = "localhost", user='root', password='mbrllngs12', dbname='childes')
+```
+
+```{r}
+corpora_meta_data <- tbl(db, "corpora")
+kid_meta_data <- tbl(db, "children")
+words <- tbl(db, "words")
+```
+
+```{r}
+all_qs <- words %>%
+  filter(gloss %like% "why")
+```
+
+
+
+# db style
 
 Connect to the childes db
 
@@ -37,20 +59,58 @@ kid_meta_data <- dbReadTable(con, "children")
 
 # production freq data
 word_freq_long <- dbReadTable(con, "childes_chi_long_freq")
+mod_chi <- dbReadTable(con, "modifiedchi")
 ```
 
 Just get the brown corpus from words
 
 ```{r}
-all_questions <- dbGetQuery(con, "SELECT * FROM words WHERE gloss LIKE '%WHY%' OR gloss LIKE '%WHAT%' OR gloss LIKE '%WHERE%'")
+all_questions_raw <- dbGetQuery(con, "SELECT * FROM words WHERE gloss LIKE '%WHY%' OR gloss LIKE '%WHAT%' OR gloss LIKE '%WHERE%' OR gloss LIKE '%HOW%' OR gloss LIKE '%WHO%' OR gloss LIKE '%WHEN%'")
 ```
+
+Clean up the data 
+
+```{r}
+days_in_month <- 30.436875
+
+all_questions <- all_questions_raw %>% 
+  select(gloss,speaker, mor, participants, gender, age, child, corpus, 
+         sentgloss, utt_number) %>% 
+  filter(speaker %in% c("MOT", "CHI", "DAD", "FAT")) %>% 
+  mutate(age_months = round(age / days_in_month, 0),
+         child_clean = ifelse(child == "--", corpus, child),
+         speaker_clean = ifelse(speaker == "CHI", "child", "parent"),
+         parent_type = ifelse(speaker == "MOT", "mother", "father"))
+```
+
+```{r}
+all_questions %<>% 
+  mutate(gloss_clean = ifelse(str_detect(gloss, "why"), "why", 
+                              ifelse(str_detect(gloss, "what"), "what",
+                                     ifelse(str_detect(gloss, "where"), "where",
+                                            ifelse(str_detect(gloss, "who"), "who",
+                                                   ifelse(str_detect(gloss, "how"), "how",
+                                                          "when"))))),
+         utt_number = as.numeric(utt_number))
+```
+
+Get max utterance number for each recording, so we can normalize. 
+
+```{r}
+tmp <- all_questions %>% 
+  group_by(child_clean, age_months) %>% 
+  mutate(utt_number = as.numeric(utt_number)) %>% 
+  summarise(length_transcript = max(utt_number))
+
+all_questions %<>% left_join(., tmp, by = c("child_clean", "age_months"))
+```
+
 
 ## Descriptives
 
 ```{r}
 all_questions %>% 
-  distinct(corpus) %>% 
-  knitr::kable()
+  distinct(corpus) 
 ```
 
 ```{r}
@@ -60,10 +120,40 @@ all_questions %>%
   paste("n children =", .)
 ```
 
+```{r}
+all_questions %>% 
+  ungroup() %>% 
+  group_by(speaker_clean, gloss_clean, length_transcript) %>% 
+  summarise(count = n()) %>% 
+  ggplot(., aes(x = gloss_clean, y = count)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Question Word") +
+  facet_wrap(~speaker_clean)
+```
+
+```{r}
+all_questions %>% 
+  group_by(speaker_clean, parent_type) %>% 
+  summarise(count = n())
+```
+
+```{r}
+summary(all_questions$age_months)
+```
+
+```{r}
+all_questions %>% 
+  filter(speaker_clean == "child") %>% 
+  select(gloss_clean, sentgloss, age_months) %>% 
+  group_by(gloss_clean) %>% 
+  sample_n(., size = 2) %>% 
+  knitr::kable()
+```
+
 
 ## Exploratory analyses
 
-Change in frequence of different question words across development
+Change in frequency of different question words across development
 
 ```{r}
 word_freq_long %>% 
@@ -72,74 +162,176 @@ word_freq_long %>%
   ggplot(data = ., aes(x = age, y = frequency, color = word)) +
   langcog::scale_color_solarized() +
   guides(color=F) +
+  labs(x = "age (months)") +
   geom_line(size = 1) +
   geom_dl(aes(label = word), method=list("last.points")) +
   xlim(12, 32) 
 ```
 
-Get just kids questions
-
-```{r}
-kids_questions <- all_questions %>% 
-  filter(speaker == "CHI")
-```
-
-Clean up data 
-
-```{r}
-days_in_month <- 30.436875
-
-kids_questions %<>% 
-  select(gloss,speaker, mor, participants, gender, age, child, corpus, sentgloss) %>% 
-  mutate(age_months = round(age / days_in_month, 0),
-         child_clean = ifelse(child == "--", corpus, child))
-```
-
-```{r}
-kids_questions %<>% 
-  mutate(gloss_clean = ifelse(str_detect(gloss, "why"), "why", 
-                              ifelse(str_detect(gloss, "what"), "what", 
-                                     "where")))
-```
-
-
 Count different kinds of questions for each kid and plot as a function of age.
 
 ```{r}
-kids_questions %>% 
-  group_by(child_clean, age_months, gloss_clean) %>% 
+all_questions %>% 
+  filter(speaker == "CHI") %>% 
+  group_by(child_clean, age_months, gloss_clean, length_transcript) %>% 
   summarise(freq = n()) %>% 
   filter(freq > 0) %>% 
-  ggplot(., aes(x = age_months, y = freq, color = gloss_clean)) +
-  geom_line(size = 1) +
+  mutate(prop = freq / length_transcript) %>% 
+  ggplot(., aes(x = age_months, y = prop, color = gloss_clean)) +
+  geom_smooth(method = "loess", se = F) +
+  labs(color = "question word", y = "Prop. of Utterances") +
   langcog::scale_color_solarized() +
-  facet_wrap(~child_clean)
+  facet_wrap(~child_clean, ncol = 7) +
+  theme(legend.position = "top")
+```
+
+Count different kinds of questions for each parent and summarise over development
+
+```{r}
+all_questions %>% 
+  filter(speaker_clean == "parent") %>% 
+  group_by(child_clean, age_months, gloss_clean, length_transcript) %>% 
+  summarise(freq = n()) %>% 
+  filter(freq > 0) %>% 
+  mutate(prop = freq / length_transcript) %>% 
+  ggplot(., aes(x = age_months, y = prop, color = gloss_clean)) +
+  geom_smooth(method = "loess", se = F) +
+  labs(color = "question word") +
+  langcog::scale_color_solarized() +
+  facet_wrap(~child_clean, ncol = 7) +
+  theme(legend.position = "top")
 ```
 
 Now get the average frequency for each question type at each month of development.
 
 ```{r}
-kids_questions %>% 
-  group_by(child_clean, age_months, gloss_clean) %>% 
+all_questions %>% 
+  filter(gloss_clean %in% c('what', 'where', 'why')) %>% 
+  group_by(child_clean, age_months, gloss_clean, speaker_clean, length_transcript) %>% 
   summarise(freq = n()) %>% 
   filter(freq > 0) %>% 
-  group_by(age_months, gloss_clean) %>% 
-  summarise(m = mean(freq, na.rm = T),
+  mutate(prop = freq / length_transcript) %>% 
+  group_by(age_months, gloss_clean, speaker_clean) %>% 
+  summarise(m = mean(prop, na.rm = T),
             n = n()) %>% 
   ggplot(., aes(x = age_months, y = m, color = gloss_clean)) +
-  geom_point(aes(size = n), alpha = 0.7) +
+  geom_point(aes(size = n), alpha = 0.3) +
   geom_smooth(se=F, method = "loess", size = 2) +
-  #geom_line(size = 1) +
-  xlim(10, 65) +
+  xlim(10, 68) +
+  labs(y = "Prop. of Utterances", x= "Age (months)") +
   guides(color = F) +
   langcog::scale_color_solarized() +
-  geom_dl(aes(label = gloss_clean), method=list("last.points")) 
+  geom_dl(aes(label = gloss_clean), method=list("last.points")) +
+  facet_wrap(~speaker_clean, scales = "free") +
+  theme(legend.position = "top")
 ```
 
+### Gender analysis
+
+```{r}
+gender_ms <- all_questions %>% 
+  group_by(child_clean, gloss_clean, speaker, gender) %>% 
+  summarise(freq = n()) %>%
+  filter(freq > 0, gender %in% c("male", "female")) %>% 
+  group_by(gloss_clean, speaker, gender) %>% 
+  langcog::multi_boot_standard(column = "freq", empirical_function = "mean") 
+```
+
+```{r}
+gender_ms %>% 
+  ggplot(., aes(x = gloss_clean, y = mean, color = gender)) +
+  geom_pointrange(aes(ymin = ci_lower, ymax = ci_upper), 
+                  position = position_dodge(width = 0.3), size = 0.8) +
+  labs(y = "Avg. Freq", x= "Question Type") +
+  langcog::scale_color_solarized() +
+  facet_wrap(~speaker, scales = "free") +
+  theme(legend.position = "top")
+```
+
+No gender differences in question words produced by kid or by mom.
+
 ### Context analyses
+
+Here we will attempt to operationalize cost and reward of a behavior to get the value for a question.
 
 Spread participants variable, so we can code for the number of people in the conversation.
 
 ```{r}
 
 ```
+
+### Complexity of utterance that each question word occurs in
+
+Use some string functions to get the word count for each utterance.
+
+```{r}
+all_questions %<>% 
+  rowwise() %>% 
+  mutate(sentence_len = length(strsplit(sentgloss,' ')[[1]]))
+```
+
+Now summarise the mean sentence length for each question type for each kid and speaker
+
+```{r}
+sentence_len_ms <- all_questions %>% 
+  ungroup() %>% 
+  group_by(age_months, speaker_clean, child_clean, gloss_clean) %>% 
+  summarise(m.ss = median(sentence_len), 
+            n = n()) %>% 
+  group_by(age_months, speaker_clean, gloss_clean) %>% 
+  summarise(m = mean(m.ss), 
+            n = n()) 
+```
+
+```{r}
+sentence_len_ms %>% 
+  filter(gloss_clean %in% c("where", "what", "why")) %>% 
+  ggplot(data = ., aes(x = age_months, y = m, color = gloss_clean)) +
+  geom_point(aes(size = n), alpha = 0.3) +
+  geom_smooth(se=F, method = "loess", size = 2) +
+  xlim(10, 68) +
+  labs(y = "Avg. Sentence Length", x = "Age (months)") +
+  guides(color = F) +
+  langcog::scale_color_solarized() +
+  geom_dl(aes(label = gloss_clean), method=list("last.points")) +
+  facet_wrap(~speaker_clean) +
+  theme(legend.position = "top")
+```
+
+### Single question word utterances
+
+```{r}
+single_words <- all_questions %>% 
+  filter(sentence_len == 1) %>% 
+  group_by(speaker_clean, child_clean, gloss_clean, age_months, length_transcript) %>% 
+  summarise(freq = n()) %>% 
+  mutate(prop = freq / length_transcript) %>% 
+  group_by(speaker_clean, gloss_clean, age_months) %>% 
+  summarise(m.ss = median(prop), 
+            n = n())
+```
+
+```{r}
+single_words %>% 
+  filter(gloss_clean %in% c("where", "what", "why")) %>% 
+  ggplot(data = ., aes(x = age_months, y = m.ss, color = gloss_clean)) +
+  geom_point(aes(size = n), alpha = 0.3) +
+  geom_smooth(se=F, method = "loess", size = 2) +
+  xlim(10, 68) +
+  guides(size = F) +
+  labs(y = "Prop. of Utterances", x = "Age (months)") +
+  langcog::scale_color_solarized() +
+  facet_wrap(~speaker_clean) +
+  theme(legend.position = "top")
+```
+
+### Fathers compared to mothers on wh-questions
+
+```{r}
+
+```
+
+
+### Other analyeses to do:
+
+- 
