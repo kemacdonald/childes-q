@@ -11,17 +11,24 @@ output: html_document
 rm(list=ls())
 library(magrittr)
 library(stringr)
+library(knitr)
 library(tidyverse)
 library(RMySQL)
 library(directlabels)
 theme_set(ggthemes::theme_few())
 ```
 
-# dplyr style
+## Connect to the CHILDES db 
+
+Code adapted from the `dplyr` databases [vignette](https://cran.r-project.org/web/packages/dplyr/vignettes/databases.html)
+
+Note that prior to running this code, you need to make sure that the mysql server is running. In the terminal, run: `mysql.server start`
 
 ```{r}
 db <- src_mysql(host = "localhost", user='root', password='mbrllngs12', dbname='childes')
 ```
+
+Get the relevant tables from the database
 
 ```{r}
 corpora_meta_data <- tbl(db, "corpora")
@@ -29,43 +36,18 @@ kid_meta_data <- tbl(db, "children")
 words <- tbl(db, "words")
 ```
 
-```{r}
-all_qs <- words %>%
-  filter(gloss %like% "why")
-```
-
-
-
-# db style
-
-Connect to the childes db
+## Extract all utterances with question words
 
 ```{r}
-con <- dbConnect(RMySQL::MySQL(), user='root', password='mbrllngs12', dbname='childes')
-```
+# start the clock
+ptm <- proc.time()
 
-List the tables in the db
+all_qs <- words %>% 
+  filter(gloss %in% c("why", "what", "where", "when", "which", "how", "who", "whose", "whom" )) %>% 
+  collect(n = Inf) 
 
-```{r}
-dbListTables(con)
-```
-
-Get the data from the db
-
-```{r}
-# metadata
-corpora_meta_data <- dbReadTable(con, "corpora")
-kid_meta_data <- dbReadTable(con, "children")
-
-# production freq data
-word_freq_long <- dbReadTable(con, "childes_chi_long_freq")
-mod_chi <- dbReadTable(con, "modifiedchi")
-```
-
-Just get the brown corpus from words
-
-```{r}
-all_questions_raw <- dbGetQuery(con, "SELECT * FROM words WHERE gloss LIKE '%WHY%' OR gloss LIKE '%WHAT%' OR gloss LIKE '%WHERE%' OR gloss LIKE '%HOW%' OR gloss LIKE '%WHO%' OR gloss LIKE '%WHEN%'")
+# Stop the clock
+proc.time() - ptm
 ```
 
 Clean up the data 
@@ -73,7 +55,7 @@ Clean up the data
 ```{r}
 days_in_month <- 30.436875
 
-all_questions <- all_questions_raw %>% 
+all_questions <- all_qs %>% 
   select(gloss,speaker, mor, participants, gender, age, child, corpus, 
          sentgloss, utt_number) %>% 
   filter(speaker %in% c("MOT", "CHI", "DAD", "FAT")) %>% 
@@ -90,9 +72,14 @@ all_questions %<>%
                                      ifelse(str_detect(gloss, "where"), "where",
                                             ifelse(str_detect(gloss, "who"), "who",
                                                    ifelse(str_detect(gloss, "how"), "how",
-                                                          "when"))))),
+                                                          ifelse(str_detect(gloss, "when"), "when",
+                                                                 ifelse(str_detect(gloss, "which"), "which",
+                                                                        ifelse(str_detect(gloss, "whose"), "whose",
+                                                                               ifelse(str_detect(gloss, "whom"), "whom",
+                                                                               "other"))))))))),
          utt_number = as.numeric(utt_number))
 ```
+
 
 Get max utterance number for each recording, so we can normalize. 
 
@@ -105,12 +92,16 @@ tmp <- all_questions %>%
 all_questions %<>% left_join(., tmp, by = c("child_clean", "age_months"))
 ```
 
+Save as csv
+
+```{r, eval = F}
+write_csv(x = all_questions, "../data/childes_questions.csv")
+```
 
 ## Descriptives
 
 ```{r}
-all_questions %>% 
-  distinct(corpus) 
+all_questions %>% distinct(corpus) %>% kable()
 ```
 
 ```{r}
@@ -138,10 +129,6 @@ all_questions %>%
 ```
 
 ```{r}
-summary(all_questions$age_months)
-```
-
-```{r}
 all_questions %>% 
   filter(speaker_clean == "child") %>% 
   select(gloss_clean, sentgloss, age_months) %>% 
@@ -150,23 +137,7 @@ all_questions %>%
   knitr::kable()
 ```
 
-
 ## Exploratory analyses
-
-Change in frequency of different question words across development
-
-```{r}
-word_freq_long %>% 
-  filter(word %in% c("why", "what", "when", "how", "where"),
-         age <= 30) %>% 
-  ggplot(data = ., aes(x = age, y = frequency, color = word)) +
-  langcog::scale_color_solarized() +
-  guides(color=F) +
-  labs(x = "age (months)") +
-  geom_line(size = 1) +
-  geom_dl(aes(label = word), method=list("last.points")) +
-  xlim(12, 32) 
-```
 
 Count different kinds of questions for each kid and plot as a function of age.
 
@@ -176,13 +147,14 @@ all_questions %>%
   group_by(child_clean, age_months, gloss_clean, length_transcript) %>% 
   summarise(freq = n()) %>% 
   filter(freq > 0) %>% 
-  mutate(prop = freq / length_transcript) %>% 
+  mutate(prop = freq / length_transcript) %>%
   ggplot(., aes(x = age_months, y = prop, color = gloss_clean)) +
   geom_smooth(method = "loess", se = F) +
   labs(color = "question word", y = "Prop. of Utterances") +
   langcog::scale_color_solarized() +
   facet_wrap(~child_clean, ncol = 7) +
-  theme(legend.position = "top")
+  theme(legend.position = "bottom") +
+  ggtitle("Children's questions")
 ```
 
 Count different kinds of questions for each parent and summarise over development
@@ -199,7 +171,8 @@ all_questions %>%
   labs(color = "question word") +
   langcog::scale_color_solarized() +
   facet_wrap(~child_clean, ncol = 7) +
-  theme(legend.position = "top")
+  theme(legend.position = "bottom") +
+  ggtitle("Parents' questions")
 ```
 
 Now get the average frequency for each question type at each month of development.
