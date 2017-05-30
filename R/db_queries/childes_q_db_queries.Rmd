@@ -1,0 +1,84 @@
+---
+title: "Childes Questions"
+author: "Kyle MacDonald"
+output: html_document
+---
+
+## Set up
+
+```{r}
+rm(list=ls())
+library(magrittr)
+library(stringr)
+library(knitr)
+library(tidyverse)
+library(RMySQL)
+```
+
+## Connect to the CHILDES db 
+
+Code adapted from the `dplyr` databases [vignette](https://cran.r-project.org/web/packages/dplyr/vignettes/databases.html)
+
+Note that prior to running this code, you need to make sure that the mysql server is running. In the terminal, run: `mysql.server start`
+
+```{r}
+db <- src_mysql(host = "localhost", user='root', password='mbrllngs12', 
+                dbname='childes_km')
+```
+
+Get the relevant tables from the database
+
+```{r}
+#corpora_meta_data <- tbl(db, "corpora")
+# kid_meta_data <- tbl(db, "children")
+words <- tbl(db, "words")
+```
+
+## Extract all utterances with question words
+
+```{r}
+system.time(
+  all_qs <- words %>% 
+    filter(line_terminator == "?") %>% 
+    collect(n = Inf) 
+)
+```
+
+Clean up the data 
+
+```{r}
+days_in_month <- 30.436875
+
+all_questions <- all_qs %>% 
+  select(gloss,speaker, mor, participants, gender, age, child, corpus, 
+         sentgloss, utt_number, act, length_transcript) %>% 
+  mutate(age_months = round(age / days_in_month, 0),
+         child_clean = ifelse(child == "--", corpus, child),
+         speaker_clean = ifelse(speaker == "CHI", "child", "adult"),
+         parent_type = ifelse(speaker == "MOT", "mother", 
+                              ifelse(speaker == "FAT", "father", 
+                                     NA)))
+```
+
+```{r}
+all_questions %<>% 
+  mutate(question_word = ifelse(str_detect(gloss, "why"), "why", 
+                              ifelse(str_detect(gloss, "what"), "what",
+                                     ifelse(str_detect(gloss, "where"), "where",
+                                            ifelse(str_detect(gloss, "who"), "who",
+                                                   ifelse(str_detect(gloss, "how"), "how",
+                                                          ifelse(str_detect(gloss, "when"), "when",
+                                                                 ifelse(str_detect(gloss, "which"), "which",
+                                                                        ifelse(str_detect(gloss, "whose"), "whose",
+                                                                               ifelse(str_detect(gloss, "whom"), "whom",
+                                                                                      ifelse(str_detect(gloss, "can"), "can", 
+                                                                                             ifelse(str_detect(gloss, "show"), "show",
+                                                                                                    "other"))))))))))),
+         utt_number = as.numeric(utt_number))
+```
+
+Save as csv
+
+```{r, eval = F}
+write_csv(x = all_questions, "../../data/queries/childes_questions.csv")
+```

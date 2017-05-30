@@ -1,0 +1,112 @@
+---
+title: "CHILDES uncertainty terms query"
+output: html_document
+---
+
+## Set up
+
+```{r}
+rm(list=ls())
+library(magrittr)
+library(stringr)
+library(knitr)
+library(tidyverse)
+library(RMySQL)
+library(lazyeval)
+```
+
+## Connect to the CHILDES db 
+
+Code adapted from the `dplyr` databases [vignette](https://cran.r-project.org/web/packages/dplyr/vignettes/databases.html)
+
+Note that prior to running this code, you need to make sure that the mysql server is running. In the terminal, run: `mysql.server start`
+
+```{r}
+db <- src_mysql(host = "localhost", user='root', password='mbrllngs12', dbname='childes')
+```
+
+Get the relevant tables from the database
+
+```{r}
+corpora_meta_data <- tbl(db, "corpora")
+kid_meta_data <- tbl(db, "children")
+words <- tbl(db, "words")
+```
+
+## Extract all utterances with question words
+
+```{r}
+# start the clock
+ptm <- proc.time()
+
+all_qs <- words %>% 
+  filter(gloss %in% c("maybe", "sometimes", "know", "unsure", "certain", "uncertain")) %>% 
+  collect(n = Inf) 
+
+# Stop the clock
+proc.time() - ptm
+```
+
+Clean up the data 
+
+```{r}
+days_in_month <- 30.436875
+
+all_qs %<>% 
+  select(gloss,speaker, mor, participants, gender, age, child, corpus, 
+         sentgloss, utt_number, date) %>% 
+  filter(speaker %in% c("MOT", "CHI", "DAD", "FAT")) %>% 
+  mutate(age_months = round(age / days_in_month, 0),
+         child_clean = ifelse(child == "--", corpus, child),
+         speaker_clean = ifelse(speaker == "CHI", "child", "parent"),
+         parent_type = ifelse(speaker == "MOT", "mother", "father"))
+
+all_qs %<>% mutate(utt_number = as.numeric(utt_number))
+```
+
+Get max utterance number for each recording, so we can normalize. 
+
+```{r}
+tmp <- all_qs %>% 
+  group_by(child_clean, age_months) %>% 
+  mutate(utt_number = as.numeric(utt_number)) %>% 
+  summarise(length_transcript = max(utt_number))
+
+all_qs %<>% left_join(., tmp, by = c("child_clean", "age_months"))
+```
+
+Get the surrounding utterances for a measure of discourse context
+
+```{r}
+context_df <- all_qs %>% select(gloss, utt_number, corpus, date)
+```
+
+```{r, eval = F}
+## todo: get this context query function to work! 
+data_f <- context_df[1,]
+
+query_context_fun <- function(data_f, range_val = 5) {
+  # get utterance range
+  utt_number <- data_f[["utt_number"]]
+  lower <- utt_num - range_val
+  upper <- utt_num + range_val
+  
+  # get date
+  this_date <- data_f[["date"]]
+  # get corpus
+  this_corpus <- data_f[["corpus"]]
+  
+  # todo: standard eval stuff so we can pass strings to dplyr functions
+  
+  # query the db
+  surrounding_utts <- words %>% 
+    filter(corpus == "Bloom", utt_number >= lower, utt_number <= upper) %>% 
+    collect(n = 10) 
+}
+```
+
+Save as csv
+
+```{r, eval = F}
+write_csv(x = all_qs, "../data/childes_uncertainty_terms.csv")
+```

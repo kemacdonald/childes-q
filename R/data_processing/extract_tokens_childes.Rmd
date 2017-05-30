@@ -1,0 +1,270 @@
+---
+title: "Extract tokens CHILDES"
+author: "Kyle MacDonald"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This script extracts tokens from longitudinal, English corpora in CHILDES. Code is adapted from: gender-input/Extract Tokens From CHILDES Corpora.ipynb. The main change is to keep the punctuation information in the sentence gloss, so I can easily find questions in the interactions. 
+
+The longitudinal corpora include:  
+
+* Bloom 1970
+* Brown
+* Suppes
+* Providence
+* Sachs
+* Davis
+
+Other corpora that we could add: 
+
+* Bloom 1973, McCune, Post, Weist, Bernstein, Brent, Feldmanm, Higginson, Post, Bates, Demettras, Braunwald, Clark, Davis, Feldman, Inkelas (no morphology?), MacWhinney, Weist
+
+----
+
+Load libraries and helper functions. Set global option to read strings as strings and not factors. This is important for text processing functions to work later on.
+
+```{r}
+rm(list=ls())
+options(stringsAsFactors = FALSE)
+source("CLANtoR.R")
+source("childes_convert_helpers.R")
+library('parallel'); library('plyr'); library('tools'); 
+library('stringr'); library("magrittr")
+library('RMySQL')
+```
+
+Define some global variables to be used later on
+
+```{r}
+wordsToExclude = c("hmm", "hm", "mm", "uh", "uhh", "ah", "um","uhhuh","eh","xxx",
+                   "yyy", "xx", 'yy','aw', 'www','er','ka')
+
+noUtt = c("0")
+
+metadataRows = c('sentGloss','sentMor','Speaker','act','gpx','sit','com',
+                 'par','Filename','Participants','Date',"Language","Corpus","Age",
+                 "Gender","Utt_Number","index","add","alt","int","spa","err","eng", 
+                 "child", "length_transcript")
+
+reformulations = paste(c("\\[\\/\\/\\]","\\[\\/\\]", "\\[\\/\\?\\]", "\\[\\/\\/\\/\\]","\\[\\/-\\]"), collapse='|')
+```
+
+Test one file
+
+```{r, eval = F}
+test <- processClanFile(filename = "../../data/raw_chat_files/Bloom70/Peter/12.cha")
+```
+
+Process the directory of raw .cha files.
+
+```{r}
+system.time(
+  bloom70 <- processDirectory('../../data/raw_chat_files/Bloom70')
+)
+```
+
+Explore the output to make sure we did things right. 
+
+```{r}
+length(grep('.* NA$', bloom70$sentMor))
+# randomly sample from bloom70
+#bloom70$word[sample(1:nrow(bloom70),1000)]
+bloom70[sample(1:nrow(bloom70),10),c('gloss','mor')]
+```
+
+Remove whitespace from child variable. 
+
+```{r}
+bloom70 %<>% mutate(child = str_trim(child))
+```
+
+Get max utterance number for each transcript
+
+```{r}
+bloom70 %<>%
+  group_by(child, age) %>% 
+  do(return_max(., col_name = "utt_number")) %>% # user-defined return_max function
+  ungroup()
+```
+
+### Write the dataframe to remote database
+
+Connect R to mysql.
+
+```{r}
+childes_db_con = dbConnect(MySQL(), 
+                          user='root', 
+                          password='mbrllngs12', 
+                          dbname='childes_km', 
+                          host='localhost')
+```
+
+Write the data frame.
+
+```{r}
+dbWriteTable(childes_db_con, bloom70, name = "words", row.names = F, overwrite = T)
+```
+
+## Rinse and repeat for the other longitudinal datasets
+
+### Brown Corpus
+
+```{r}
+system.time(
+  brown <- processDirectory('../../data/raw_chat_files/Brown')
+)
+```
+
+Remove whitespace from child variable and remove extra variable `xgr`. 
+
+```{r}
+brown %<>% mutate(child = str_trim(child)) %>% 
+  select(-xgr)
+```
+
+Get max utterance number for each transcript
+
+```{r}
+brown %<>%
+  group_by(child, age) %>% 
+  do(return_max(., col_name = "utt_number")) %>% # user-defined return_max function
+  ungroup()
+```
+
+Write the data frame.
+
+```{r}
+dbWriteTable(childes_db_con, brown, name = "words", row.names = F, append = T)
+```
+
+### Providence corpus
+
+```{r}
+system.time(
+  providence <- processDirectory('../../data/raw_chat_files/Providence')
+)
+```
+
+Remove whitespace from child variable.
+
+```{r}
+providence %<>% mutate(child = str_trim(child)) %>% 
+  select(-pho)
+```
+
+Get max utterance number for each transcript
+
+```{r}
+providence %<>%
+  group_by(child, age) %>% 
+  do(return_max(., col_name = "utt_number")) %>% # user-defined return_max function
+  ungroup()
+```
+
+Write the data frame.
+
+```{r}
+dbWriteTable(childes_db_con, providence, name = "words", row.names = F, append = T)
+```
+
+## Suppes corpus
+
+```{r}
+system.time(
+  suppes <- processDirectory('../../data/raw_chat_files/Suppes/')
+)
+```
+
+Remove whitespace from child variable.
+
+```{r}
+suppes %<>% mutate(child = str_trim(child)) 
+```
+
+Get max utterance number for each transcript
+
+```{r}
+suppes %<>%
+  group_by(child, age) %>% 
+  do(return_max(., col_name = "utt_number")) %>% # user-defined return_max function
+  ungroup()
+```
+
+Write the data frame.
+
+```{r}
+dbWriteTable(childes_db_con, suppes, name = "words", row.names = F, append = T)
+```
+
+## Weist corpora
+
+```{r}
+system.time(
+  sachs <- processDirectory('../../data/raw_chat_files/Sachs/')
+)
+```
+
+Remove whitespace from child variable.
+
+```{r}
+sachs %<>% mutate(child = str_trim(child)) 
+```
+
+Get max utterance number for each transcript
+
+```{r}
+sachs %<>%
+  group_by(child, age) %>% 
+  do(return_max(., col_name = "utt_number")) %>% # user-defined return_max function
+  ungroup()
+```
+
+Write the data frame.
+
+```{r}
+dbWriteTable(childes_db_con, sachs, name = "words", row.names = F, append = T)
+```
+
+######################
+
+Let's abstract this into a function!
+
+
+```{r}
+write_corpus_to_db <- function(dir_name) {
+  # run the process dir function
+  corp_df <- processDirectory('../../data/raw_chat_files/Providence')
+  
+  # clean up data frame
+  corp_df %<>% 
+    mutate(child = str_trim(child)) %>% 
+    group_by(child, age) %>% 
+    do(return_max(., col_name = "utt_number")) %>% # user-defined return_max function
+    ungroup()
+  
+  # write to db
+  dbWriteTable(childes_db_con, corp_df, name = "words", row.names = F, append = T)
+}
+```
+
+Use a loop to apply the corpus_to_db function to all directories with the raw .cha files. 
+
+```{r}
+#List all dirs you need to process
+dlist <- list.dirs("parent_dir")
+
+# get just the dirs that we want to process
+dlist_filt
+
+for(d in dlist_filt){
+  write_corpus_to_db(d)
+}
+```
+
+
+* Suppes
+* Sachs

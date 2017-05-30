@@ -1,0 +1,224 @@
+---
+title: "CHILDES uncertainty terms viz"
+author: "Kyle MacDonald"
+output: html_document
+---
+
+
+## Set up
+
+```{r, include = F}
+knitr::opts_chunk$set(echo=T, warning=FALSE, message=FALSE,
+                      fig.width=12, fig.height=8)
+```
+
+
+```{r}
+rm(list=ls())
+library(magrittr)
+library(stringr)
+library(knitr)
+library(tidyverse)
+library(RMySQL)
+library(directlabels)
+theme_set(ggthemes::theme_few())
+```
+
+## Read data
+
+```{r}
+all_qs <- read_csv("../../data/queries/childes_uncertainty_terms.csv")
+```
+
+## Descriptives
+
+```{r}
+all_qs %>% distinct(corpus) %>% kable()
+```
+
+```{r}
+all_qs %>% 
+  distinct(child) %>% 
+  nrow() %>% 
+  paste("n children =", .)
+```
+
+```{r}
+all_qs %>% 
+  ungroup() %>% 
+  group_by(speaker_clean, gloss, length_transcript) %>% 
+  summarise(count = n()) %>% 
+  ggplot(., aes(x = gloss, y = count)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Uncertainty Word") +
+  facet_wrap(~speaker_clean)
+```
+
+```{r}
+all_qs %>% 
+  group_by(speaker_clean, parent_type) %>% 
+  summarise(count = n())
+```
+
+```{r}
+all_qs %>% 
+  filter(speaker_clean == "child") %>% 
+  select(gloss, sentgloss, age_months) %>% 
+  group_by(gloss) %>% 
+  sample_n(., size = 1) %>% 
+  knitr::kable()
+```
+
+## Text processing
+
+Convert all gloss to lowercase
+
+```{r}
+all_qs %<>% mutate(gloss = str_to_lower(gloss))
+```
+
+Flag "don't know" vs. "know"
+
+```{r}
+all_qs %<>% 
+  mutate(know_type = ifelse(gloss == "know" & 
+                              str_detect(pattern = "don't know", string = sentgloss) == T,
+                            "dont_know", "know"))
+```
+
+Flag "I don't know"
+
+```{r}
+all_qs %<>% 
+  mutate(know_type_you = ifelse(gloss == "know" & str_detect(pattern = "I don't know", 
+                                                             string = sentgloss) == T, "i_dont_know",
+                                ifelse(gloss == "know" & str_detect(pattern = "I know",
+                                                                    string = sentgloss), "i_know",
+                                                                    "other")))
+```
+
+
+## Exploratory analyses
+
+Count different kinds of uncertainty terms for each kid and plot as a function of age.
+
+```{r}
+all_qs %>% 
+  filter(speaker == "CHI") %>% 
+  group_by(child_clean, age_months, gloss, length_transcript) %>% 
+  summarise(freq = n()) %>% 
+  filter(freq > 0) %>% 
+  mutate(prop = freq / length_transcript) %>%
+  ggplot(., aes(x = age_months, y = prop, color = gloss)) +
+  geom_smooth(method = "loess", se = F) +
+  labs(color = "uncertainty term", y = "Prop. of Utterances") +
+  langcog::scale_color_solarized() +
+  facet_wrap(~child_clean, ncol = 7) +
+  theme(legend.position = "bottom") 
+```
+
+Count different kinds of uncertainty terms for each parent and summarise over development
+
+```{r}
+all_qs %>% 
+  filter(speaker_clean == "parent") %>% 
+  group_by(child_clean, age_months, gloss, length_transcript) %>% 
+  summarise(freq = n()) %>% 
+  filter(freq > 0) %>% 
+  mutate(prop = freq / length_transcript) %>% 
+  ggplot(., aes(x = age_months, y = prop, color = gloss)) +
+  geom_smooth(method = "loess", se = F) +
+  labs(color = "uncertainty term") +
+  langcog::scale_color_solarized() +
+  facet_wrap(~child_clean, ncol = 7) +
+  theme(legend.position = "bottom") +
+  ggtitle("Parents' utterances")
+```
+
+Now get the average frequency for each question type at each month of development.
+
+```{r}
+all_qs %>% 
+  group_by(child_clean, age_months, gloss, speaker_clean, length_transcript) %>% 
+  summarise(freq = n()) %>% 
+  filter(freq > 0) %>% 
+  mutate(prop = freq / length_transcript) %>% 
+  group_by(age_months, gloss, speaker_clean) %>% 
+  summarise(m = mean(prop, na.rm = T),
+            n = n()) %>% 
+  ggplot(., aes(x = age_months, y = m, color = gloss)) +
+  geom_point(aes(size = n), alpha = 0.3) +
+  geom_smooth(se=F, method = "loess", size = 2) +
+  xlim(10, 68) +
+  labs(y = "Prop. of Utterances", x= "Age (months)") +
+  guides(color = F) +
+  langcog::scale_color_solarized() +
+  geom_dl(aes(label = gloss), method=list("last.points")) +
+  facet_wrap(~speaker_clean, scales = "free") +
+  theme(legend.position = "top")
+```
+
+## Viz "know" vesus "don't know"
+
+```{r}
+all_qs %>% 
+  filter(gloss == "know") %>% 
+  group_by(child_clean, age_months, know_type, speaker_clean, length_transcript) %>% 
+  summarise(freq = n()) %>% 
+  filter(freq > 0) %>% 
+  mutate(prop = freq / length_transcript) %>% 
+  group_by(age_months, know_type, speaker_clean) %>% 
+  summarise(m = mean(prop, na.rm = T),
+            n = n()) %>% 
+  ggplot(., aes(x = age_months, y = m, color = know_type)) +
+  geom_point(aes(size = n), alpha = 0.3) +
+  geom_smooth(se=F, method = "loess", size = 2) +
+  xlim(10, 68) +
+  labs(y = "Prop. of Utterances", x= "Age (months)") +
+  guides(color = F) +
+  langcog::scale_color_solarized() +
+  geom_dl(aes(label = know_type), method=list("last.points")) +
+  facet_wrap(~speaker_clean, scales = "free") +
+  theme(legend.position = "top")
+```
+
+## Viz "I know" vs. "I don't know"
+
+```{r}
+all_qs %>% 
+  filter(gloss == "know", know_type_you != "other") %>% 
+  group_by(child_clean, age_months, know_type_you, speaker_clean, length_transcript) %>% 
+  summarise(freq = n()) %>% 
+  filter(freq > 0) %>% 
+  mutate(prop = freq / length_transcript) %>% 
+  group_by(age_months, know_type_you, speaker_clean) %>% 
+  summarise(m = mean(prop, na.rm = T),
+            n = n()) %>% 
+  ggplot(., aes(x = age_months, y = m, color = know_type_you)) +
+  geom_point(aes(size = n), alpha = 0.3) +
+  geom_smooth(se=F, method = "loess", size = 2, span = 10) +
+  xlim(10, 68) +
+  labs(y = "Prop. of Utterances", x= "Age (months)") +
+  guides(color = F) +
+  langcog::scale_color_solarized() +
+  geom_dl(aes(label = know_type_you), method=list("last.points")) +
+  facet_wrap(~speaker_clean) +
+  theme(legend.position = "top")
+```
+
+```{r}
+examples <- all_qs %>% 
+  filter(gloss == "know", know_type_you != "other", speaker_clean == "child") %>% 
+  sample_n(size = 20) %>% 
+  select(sentgloss, speaker_clean, utt_number) 
+
+examples %>% kable()
+```
+
+
+Analyses todo:
+
+  - does overall sentiment of the interaction predict experessions of uncertainty? this tests the prediction that more positive/warm interactions allow for expressions of uncertainty. 
+  - does parent expressions of uncertainty predict child's expressions? 
+  - what kind of languge comes before an expression of uncertainty -- both for the child and for the parent? 
+  - more generally, what are the contexts in which parents express uncertainty? what do parents say following an expression of uncertainty? is that the end of the discussion or do they expand on why they don't know the answer? 
