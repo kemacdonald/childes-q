@@ -10,3 +10,4 @@ movies/
 packrat/lib*/
 misc/
 /data/raw_chat_files
+/data/queries
