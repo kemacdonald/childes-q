@@ -208,10 +208,10 @@ cleanMOR = function(mor){
   return(onesplit[sapply(gsub('[[:punct:]]','', onesplit), nchar) > 0])
 }
 
-processClanFile = function(filename){
+processClanFile = function(filename, cores = 1){
   library('stringr')
   print(paste('Processing file:', filename))
-  df = read.CLAN.file(filename)
+  df = read.CLAN.file(filename, cores = cores)
   
   if (ncol(df) > 36){ #!!! lower this number if possible
     print(names(df))
@@ -219,7 +219,11 @@ processClanFile = function(filename){
   }
   print(paste('CLANtoR produced dataframe with dimensions:',dim(df)[1], 'by', dim(df)[2]))
   
-  processedSentenceList = lapply(1:nrow(df), function(i){sentenceHandler(df[i,])})
+  # check number of cores
+  print(paste("Number of cores is", cores))
+  
+  processedSentenceList = mclapply(1:nrow(df), function(i){sentenceHandler(df[i,])}, 
+                                   mc.cores = cores)
   print('Processed sentences')
   
   allTokens = do.call('rbind.fill', processedSentenceList)    
@@ -227,13 +231,13 @@ processClanFile = function(filename){
   return(allTokens)
 }
 
-processDirectory = function(dirname){    
+processDirectory = function(dirname, cores){    
   fnames = paste(dirname, list.files(dirname, recursive=T, pattern = "\\.cha$"), sep='/')
   print(paste('Processing', length(fnames), 'filenames'))
   
   #!!! multicore this 
-  allFiles = do.call('rbind.fill', lapply(fnames, processClanFile))
-  #allFiles = do.call('rbind.fill', mclapply(fnames, processClanFile, mc.cores=4))
+  #allFiles = do.call('rbind.fill', lapply(fnames, processClanFile))
+  allFiles = do.call('rbind.fill', mclapply(fnames, processClanFile, mc.cores= cores))
   
   names(allFiles) = tolower(names(allFiles))
   allFiles$age = sapply(allFiles$age, ageToDays)

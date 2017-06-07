@@ -37,48 +37,102 @@ words <- tbl(db, "words")
 ## Extract all utterances with question words
 
 ```{r}
-system.time(
-  all_qs <- words %>% 
+all_qs <- words %>% 
     filter(line_terminator == "?") %>% 
     collect(n = Inf) 
-)
 ```
 
-Clean up the data 
+Create session ID for each transcript
+
+```{r}
+# get the number of transcripts for each child
+# this way we know how many id numbers to expect
+n_transcripts <- all_qs %>% 
+  select(child, length_transcript) %>% 
+  distinct() %>%
+  group_by(child) %>% 
+  mutate(n_sessions = n(),
+         session_id = 1:n_sessions)
+
+# join n_sessions info with rest of data
+all_qs %<>% left_join(., n_transcripts)
+```
+
+## Clean up the data 
+
+Only keep distinct questions
+
+```{r}
+all_qs %<>% 
+  group_by(child, speaker, utt_number, session_id) %>% 
+  distinct(sentgloss, .keep_all = T)
+```
+
 
 ```{r}
 days_in_month <- 30.436875
 
-all_questions <- all_qs %>% 
-  select(gloss,speaker, mor, participants, gender, age, child, corpus, 
-         sentgloss, utt_number, act, length_transcript) %>% 
+all_qs %<>% 
+  select(gloss, speaker, mor, participants, gender, age, child, corpus, 
+         sentgloss, utt_number, act, length_transcript, n_sessions, session_id) %>% 
   mutate(age_months = round(age / days_in_month, 0),
          child_clean = ifelse(child == "--", corpus, child),
          speaker_clean = ifelse(speaker == "CHI", "child", "adult"),
          parent_type = ifelse(speaker == "MOT", "mother", 
                               ifelse(speaker == "FAT", "father", 
-                                     NA)))
+                                     "other_adult")))
+```
+
+Clean up child variable. Need to fix this on the database end.
+
+```{r}
+all_qs %<>% 
+  ungroup %>% 
+  mutate(child_clean = ifelse(str_detect(child, "ale"), "alex",
+                              ifelse(str_detect(child, "eth"), "ethan",
+                                     ifelse(str_detect(child, "lil"), "lily",
+                                            ifelse(str_detect(child, "nai"), "naima", 
+                                                   ifelse(str_detect(child, "vio"), "violet", 
+                                                          ifelse(str_detect(child, "wil"), "william",
+                                                                 ifelse(str_detect(child, "n"), "naomi",
+                                                                        child)))))))) %>% 
+  select(-child)
 ```
 
 ```{r}
-all_questions %<>% 
+all_qs %<>% 
   mutate(question_word = ifelse(str_detect(gloss, "why"), "why", 
                               ifelse(str_detect(gloss, "what"), "what",
                                      ifelse(str_detect(gloss, "where"), "where",
                                             ifelse(str_detect(gloss, "who"), "who",
-                                                   ifelse(str_detect(gloss, "how"), "how",
+                                                   ifelse(str_detect(gloss, "^how"), "how",
                                                           ifelse(str_detect(gloss, "when"), "when",
                                                                  ifelse(str_detect(gloss, "which"), "which",
                                                                         ifelse(str_detect(gloss, "whose"), "whose",
                                                                                ifelse(str_detect(gloss, "whom"), "whom",
                                                                                       ifelse(str_detect(gloss, "can"), "can", 
-                                                                                             ifelse(str_detect(gloss, "show"), "show",
-                                                                                                    "other"))))))))))),
+                "other")))))))))),
          utt_number = as.numeric(utt_number))
+```
+
+Get the total number of questions asked by adults and child for each session, so we can normalize later.
+
+```{r}
+n_questions <- all_qs %>% select(child_clean, speaker_clean, session_id, sentgloss, utt_number) 
+  
+n_questions %<>% 
+  group_by(child_clean, speaker_clean, session_id) %>% 
+  summarise(n_questions_transcript = n())
+```
+
+Join the total number of questions with the rest of the data
+
+```{r}
+all_qs %<>% left_join(., n_questions)
 ```
 
 Save as csv
 
 ```{r, eval = F}
-write_csv(x = all_questions, "../../data/queries/childes_questions.csv")
+write_csv(x = all_qs, "../../data/queries/childes_questions.csv")
 ```

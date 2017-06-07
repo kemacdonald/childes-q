@@ -37,10 +37,14 @@
 ## Watch out for "," '"' and "'" when converting to/from csv
 ###############################################################
 
+
 library(plyr)
 library(parallel)
+library(magrittr)
+library(stringr)
+library(dplyr)
 
-read.CLAN.file <- function(f) {
+read.CLAN.file <- function(f, cores) {
   
   tmp <- readLines(f)
   
@@ -53,7 +57,7 @@ read.CLAN.file <- function(f) {
   alltext <- paste(tmp, collapse="\n")	
   utts = sapply(unlist(strsplit(alltext, "\n\\*", perl=T)), function(x){ifelse(substr(x, nchar(x), nchar(x)) == '\n',x, paste(x, '\n', sep=''))})
   utts <- utts[-1]
-  tierlist <- lapply(utts, get_utt_info)
+  tierlist <- mclapply(utts, get_utt_info, mc.cores = cores)
   data <- do.call('rbind.fill', tierlist)
   
   #Collect the data that will be appended to every line
@@ -94,7 +98,6 @@ read.CLAN.file <- function(f) {
   data$Utt_Number <- row.names(data)
   
   ## extract the child's name: note that this will probably not handle all cases
-  
   data$child <- data$Filename %>% 
     unique() %>% 
     str_replace(., pattern = ".cha", "") %>% # strip file extension

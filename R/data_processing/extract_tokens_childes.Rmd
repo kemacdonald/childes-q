@@ -56,15 +56,19 @@ reformulations = paste(c("\\[\\/\\/\\]","\\[\\/\\]", "\\[\\/\\?\\]", "\\[\\/\\/\
 Test one file
 
 ```{r, eval = F}
-test <- processClanFile(filename = "../../data/raw_chat_files/Bloom70/Peter/12.cha")
+test1 <- processClanFile(filename = "../../data/raw_chat_files/Bloom70/Peter/12.cha", cores = 1)
 ```
 
 Process the directory of raw .cha files.
 
 ```{r}
-system.time(
-  bloom70 <- processDirectory('../../data/raw_chat_files/Bloom70')
-)
+path <- "../../data/raw_chat_files/"
+
+bloom70 <- processDirectory(dir_path =, dir_name = "bloom70", path, cores = 4)
+```
+
+```{r}
+four_cores <- 162.241 
 ```
 
 Explore the output to make sure we did things right. 

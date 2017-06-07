@@ -1,5 +1,5 @@
 ---
-title: "CHILDES-Q Visualization"
+title: "CHILDES-Q Visualization and Exploration"
 author: "Kyle MacDonald"
 output: html_document
 ---
@@ -13,15 +13,10 @@ knitr::opts_chunk$set(echo=T, warning=FALSE, message=FALSE,
 
 ```{r}
 rm(list=ls())
-library(ggrepel)
-library(magrittr)
-library(stringr)
-library(knitr)
-library(tidyverse)
-library(RMySQL)
-library(directlabels)
-library(tidytext)
-library(forcats)
+library(ggrepel); library(magrittr)
+library(stringr); library(knitr)
+library(tidyverse); library(directlabels); 
+library(tidytext); library(forcats)
 theme_set(ggthemes::theme_few())
 ```
 
@@ -31,43 +26,25 @@ theme_set(ggthemes::theme_few())
 all_qs <- read_csv("../../data/queries/childes_questions.csv")
 ```
 
-Clean up child variable
-
-```{r}
-all_qs %<>% 
-  mutate(child_clean = ifelse(str_detect(child, "ale"), "alex",
-                              ifelse(str_detect(child, "eth"), "ethan",
-                                     ifelse(str_detect(child, "lil"), "lily",
-                                            ifelse(str_detect(child, "nai"), "naima", 
-                                                   ifelse(str_detect(child, "vio"), "violet", 
-                                                          ifelse(str_detect(child, "wil"), "william",
-                                                                 ifelse(str_detect(child, "n"), "naomi_s",
-                                                                        child))))))))
-```
-
-Only keep questions with known question words
-
-```{r}
-all_qs_filt <- all_qs %>% filter(question_word != "other", gloss != "show")
-```
-
 ## Descriptives
 
 ```{r}
-all_qs_filt %>% distinct(corpus) %>% kable()
+all_qs %>% distinct(corpus) %>% kable()
 ```
 
 How many children in dataset? 
 
 ```{r}
-all_qs_filt %>% 
+all_qs %>% 
   distinct(child_clean) %>% 
   nrow() %>% 
   paste("n children =", .)
 ```
 
+Plot distribution of question types for adults and children.
+
 ```{r}
-all_qs_filt %>% 
+all_qs %>% 
   ungroup() %>% 
   group_by(speaker_clean, question_word, length_transcript) %>% 
   summarise(count = n()) %>%
@@ -77,14 +54,19 @@ all_qs_filt %>%
   facet_wrap(~speaker_clean)
 ```
 
+How many questions do we have for adults and children?
+
 ```{r}
-all_qs_filt %>% 
+all_qs %>% 
   group_by(speaker_clean) %>% 
+  distinct(sentgloss) %>% 
   summarise(count = n())
 ```
 
+What are some examples of these questions? 
+
 ```{r}
-all_qs_filt %>% 
+all_qs %>% 
   filter(speaker_clean == "child") %>% 
   select(question_word, sentgloss, age_months) %>% 
   group_by(question_word) %>% 
@@ -92,235 +74,73 @@ all_qs_filt %>%
   knitr::kable()
 ```
 
-## Exploratory analyses
+## Exploratory visualizations
 
-Histogram of question types for each child
+Histograms of question types for each child
 
 ```{r}
-all_qs_filt %>% 
+all_qs %>% 
   ungroup() %>% 
   filter(speaker_clean == "child") %>% 
-  group_by(child_clean, question_word, length_transcript) %>% 
+  group_by(child_clean, question_word) %>% 
   summarise(freq = n()) %>% 
   ggplot(., aes(x = question_word, y = freq)) +
   geom_bar(stat = "identity") +
-  labs(x = "Question Word", y = "Count") +
+  labs(x = "Question Word", y = "Count",
+       title = "Distribution of children's question types") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  facet_wrap(~child_clean)
-```
-
-Count different kinds of questions for each kid and plot as a function of age.
-
-```{r}
-all_qs_filt %>% 
-  filter(speaker == "CHI") %>% 
-  group_by(child_clean, age_months, question_word, length_transcript) %>% 
-  summarise(freq = n()) %>% 
-  filter(freq > 0) %>% 
-  mutate(prop = freq / length_transcript) %>%
-  ggplot(., aes(x = age_months, y = prop, color = question_word)) +
-  geom_point(alpha = 0.2) +
-  geom_smooth(method = "loess", se = F) +
-  labs(color = "question word", y = "Prop. of Utterances") +
-  langcog::scale_color_solarized() +
-  facet_wrap(~child_clean, ncol = 7,  scales = "free_y") +
-  theme(legend.position = "bottom") +
-  ggtitle("Children's questions")
-```
-
-Count different kinds of questions for each adult and summarise over development
-
-```{r}
-all_qs_filt %>% 
-  filter(speaker_clean != "child") %>% 
-  group_by(child_clean, age_months, question_word, length_transcript) %>% 
-  summarise(freq = n()) %>% 
-  filter(freq > 0) %>% 
-  mutate(prop = freq / length_transcript) %>% 
-  ggplot(., aes(x = age_months, y = prop, color = question_word)) +
-  geom_smooth(method = "loess", se = F) +
-  labs(color = "question word", x = "Age (months)", y = "Prop. of Utterances") +
-  langcog::scale_color_solarized() +
-  facet_wrap(~child_clean, ncol = 7) +
-  theme(legend.position = "bottom") +
-  ggtitle("Adults' questions")
-```
-
-Now get the average frequency for each question type at each month of development.
-
-```{r}
-all_qs_filt %>% 
-  filter(question_word %in% c('what', 'where', 'why', 'who', 'how', 'when')) %>% 
-  group_by(child_clean, age_months, question_word, 
-           speaker_clean, length_transcript) %>% 
-  summarise(freq = n()) %>% 
-  filter(freq > 0) %>% 
-  mutate(prop = freq / length_transcript) %>% 
-  group_by(child_clean, age_months, question_word, speaker_clean) %>% 
-  summarise(m = mean(prop, na.rm = T)) %>% 
-  group_by(age_months, question_word, speaker_clean) %>% 
-  summarise(m = mean(m),
-            n = n()) %>% 
-  ggplot(., aes(x = age_months, y = m, color = question_word)) +
-  geom_point(aes(size = n), alpha = 0.3) +
-  geom_smooth(se=F, method = "loess", size = 2) +
-  xlim(10, 68) +
-  labs(y = "Prop. of Utterances", x= "Age (months)") +
-  guides(color = F) +
-  langcog::scale_color_solarized() +
-  geom_dl(aes(label = question_word), method=list("last.points")) +
-  facet_wrap(~speaker_clean, scales = "free") +
-  theme(legend.position = "top")
-```
-
-### Gender analysis
-
-```{r}
-gender_ms <- all_qs_filt %>% 
-  group_by(child_clean, question_word, speaker_clean, gender, length_transcript) %>% 
-  summarise(freq = n()) %>%
-  filter(freq > 0, gender %in% c("male", "female")) %>% 
-  mutate(prop = freq / length_transcript) %>% 
-  group_by(child_clean, question_word, speaker_clean, gender) %>% 
-  summarise(mean_prop = mean(prop)) %>% 
-  group_by(question_word, speaker_clean, gender) %>% 
-  langcog::multi_boot_standard(column = "mean_prop", empirical_function = "mean") 
-```
-
-```{r}
-gender_ms %>% 
-  ggplot(., aes(x = question_word, y = mean, color = gender)) +
-  geom_pointrange(aes(ymin = ci_lower, ymax = ci_upper), 
-                  position = position_dodge(width = 0.3), size = 0.8) +
-  labs(y = "Avg. Freq", x= "Question Type") +
-  langcog::scale_color_solarized() +
-  facet_wrap(~speaker_clean, scales = "free") +
-  theme(legend.position = "top")
-```
-
-### Context analyses
-
-Here we will attempt to operationalize cost and reward of a behavior to get the value for a question.
-
-Spread participants variable, so we can code for the number of people in the conversation.
-
-```{r}
-
-```
-
-### Complexity of utterance that each question word occurs in
-
-Use some string functions to get the word count for each utterance.
-
-```{r}
-all_qs_filt %<>% 
-  rowwise() %>% 
-  mutate(sentence_len = length(strsplit(sentgloss,' ')[[1]]))
-```
-
-Now summarise the mean sentence length for each question type for each kid and speaker
-
-```{r}
-sentence_len_ms <- all_qs_filt %>% 
-  ungroup() %>% 
-  group_by(age_months, speaker_clean, child_clean, question_word) %>% 
-  summarise(m.ss = median(sentence_len), 
-            n = n()) %>% 
-  group_by(age_months, speaker_clean, question_word) %>% 
-  summarise(m = mean(m.ss), 
-            n = n()) 
-```
-
-```{r}
-sentence_len_ms %>% 
-  filter(question_word %in% c('what', 'where', 'why', 'who', 'how', 'when')) %>% 
-  ggplot(data = ., aes(x = age_months, y = m, color = question_word)) +
-  geom_point(aes(size = n), alpha = 0.3) +
-  geom_smooth(se=F, method = "loess", size = 2) +
-  xlim(10, 68) +
-  labs(y = "Avg. Sentence Length", x = "Age (months)") +
-  guides(color = F) +
-  langcog::scale_color_solarized() +
-  geom_dl(aes(label = question_word), method=list("last.points")) +
-  facet_wrap(~speaker_clean) +
-  theme(legend.position = "top")
-```
-
-### Single question word utterances
-
-```{r}
-single_words <- all_qs_filt %>% 
-  filter(sentence_len == 1) %>% 
-  group_by(speaker_clean, child_clean, question_word, 
-           age_months, length_transcript) %>% 
-  summarise(freq = n()) %>% 
-  mutate(prop = freq / length_transcript) %>% 
-  group_by(speaker_clean, child_clean, question_word, age_months) %>% 
-  summarise(m = mean(prop)) %>% 
-  group_by(speaker_clean, question_word, age_months) %>% 
-  summarise(m.ss = median(m), 
-            n = n())
-```
-
-```{r}
-single_words %>% 
-  #filter(question_word %in% c("where", "what", "why")) %>% 
-  filter(question_word %in% c('what', 'where', 'why', 'who', 'how', 'when'), 
-         age_months <= 60) %>%
-  ggplot(data = ., aes(x = age_months, y = m.ss, color = question_word)) +
-  geom_point(aes(size = n), alpha = 0.3) +
-  geom_smooth(se=F, method = "loess", size = 2) +
-  xlim(10, 68) +
-  guides(color = F) +
-  labs(y = "Prop. of Utterances", x = "Age (months)") +
-  langcog::scale_color_solarized() +
-  geom_dl(aes(label = question_word), method=list("last.points")) +
-  facet_wrap(~speaker_clean) +
-  theme(legend.position = "top")
+  facet_wrap(~child_clean, scales = "free_y")
 ```
 
 ## Word frequencies in question utterances
 
+First, let's test the unnest_tokens() function on a subset of the data
+
+```{r}
+test_df <- all_qs %>% filter(child_clean == "gia")
+
+test_output <- test_df %>% 
+  unnest_tokens(word, sentgloss) %>% 
+  left_join(test_df, .) %>% 
+  select(sentgloss, word, utt_number)
+```
+
+Visual inspect of `test_output` suggests that the unnest_tokens() function is working properly, so we can apply it to the rest of the questions data. 
+
 ```{r}
 unigrams_df <- all_qs %>% 
-  distinct(sentgloss, .keep_all = T) %>% 
   unnest_tokens(word, sentgloss) %>% 
   select(-gloss)
 ```
 
-Remove stop words
+Remove "0" from word column and filter blank rows. We are also going to remove "xxx" and "yyy" word codes.
 
 ```{r}
-custom_stop_words <- bind_rows(data_frame(word = cust_stop_vect, 
-                                          lexicon = c("custom")))
-```
-
-```{r}
-unigrams_df %<>% anti_join(custom_stop_words)
+unigrams_df %<>% 
+  mutate(word = str_replace_all(word, pattern = "0", "")) %>% 
+  filter(word != "", word != "xxx", word != "yyy")
 ```
 
 What are the most common words that occur in utterances flagged as questions?
 
 ```{r}
 plot_qs <- unigrams_df %>% 
-  group_by(word, question_word) %>% 
+  group_by(word) %>% 
   count() %>%
   ungroup() %>% 
   top_n(30) %>% 
   arrange(desc(n)) %>%
   mutate(word = factor(word, levels = rev(unique(word))))
-```
 
-```{r}
 plot_qs %>% 
   mutate(word = reorder(word, n)) %>% 
-  ggplot(aes(word, n, fill = question_word)) +
+  ggplot(aes(word, n)) +
   geom_col() +
   labs(x = NULL, y = "count") +
   coord_flip()
 ```
 
-Plot for each question word
+This isn't super informative. So now let's make the same plot but split by the canonical question words categories
 
 ```{r}
 unigrams_df %>%
@@ -338,11 +158,9 @@ unigrams_df %>%
 Remove stop words and do the same plot
 
 ```{r}
-unigrams_df %<>% anti_join(stop_words) 
-```
+unigrams_df_filt <- unigrams_df %>% anti_join(stop_words) 
 
-```{r}
-unigrams_df %>%
+unigrams_df_filt %>%
   group_by(question_word, word) %>% 
   count() %>% 
   top_n(5) %>% 
@@ -354,60 +172,89 @@ unigrams_df %>%
   coord_flip()
 ```
 
+Next, let's look at the most frequent words that occur together
+
 ## Bigram analyses
 
-What are the most common words that appear with the canonical question words?
+First, let's test the unnest_tokens() function is creating sensible bigrams
+
+```{r}
+test_df %>% 
+  unnest_tokens(bigram, sentgloss, token = "ngrams", n = 2) %>% 
+  left_join(test_df, .) %>% 
+  select(sentgloss, bigram) %>% 
+  head() %>% 
+  kable()
+```
+
+Looks reasonable to me. let's do if for all the questions
 
 ```{r}
 bigrams_df <- all_qs %>% 
-  mutate(word = gloss) %>% 
-  anti_join(custom_stop_words) %>% 
-  distinct(sentgloss, .keep_all = T) %>% 
   unnest_tokens(bigram, sentgloss, token = "ngrams", n = 2) %>% 
+  filter(str_detect(bigram, "yyy") == F, 
+         str_detect(bigram, "xxx") == F,
+         str_detect(bigram, "0") == F) %>% 
   select(-gloss)
 ```
 
+What are the most common bigrams that appear in questions for adults and kids?
+
 ```{r}
 bigram_plot <- bigrams_df %>%
-  group_by(bigram) %>% 
-  count() %>% 
+  group_by(bigram, speaker_clean) %>% 
+  count() %>%
+  group_by(speaker_clean) %>% 
   top_n(10) %>% 
   arrange(desc(n)) %>%
+  ungroup %>% 
   mutate(bigram = factor(bigram, levels = rev(unique(bigram))))
 
 bigram_plot %>% 
   ungroup %>%
-  ggplot(aes(bigram, n)) +
+  ggplot(aes(bigram, n, fill = speaker_clean)) +
   geom_col(show.legend = FALSE) +
   labs(x = NULL, y = "count") +
-  coord_flip()
+  coord_flip() +
+  facet_wrap(~speaker_clean, scales = "free")
 ```
 
-Plot relationship between adult and kid bigrams
+Plot relationship between adult and kid bigrams, removing transcripts with very few questions
 
 ```{r}
 bigrams_cor_plot <- bigrams_df %>%
-  group_by(speaker_clean) %>% 
-  count(bigram) %>% 
-  top_n(100) %>% 
-  mutate(n = log(n)) %>% 
-  spread(key = speaker_clean, value = n)
+  filter(n_questions_transcript > 5) %>% 
+  count(bigram, speaker_clean, child_clean, session_id) %>% 
+  group_by(speaker_clean, child_clean, session_id) %>% 
+  mutate(prop = n / sum(n))
 
-bigrams_cor_plot %>% 
+ss <- bigrams_cor_plot %>% 
+  group_by(bigram, speaker_clean, child_clean) %>% 
+  summarise(m_prop = mean(prop, na.rm = T)) %>% 
+  group_by(speaker_clean, bigram) %>% 
+  summarise(m_prop = mean(m_prop)) %>% 
+  spread(key = speaker_clean, value = m_prop)
+```
+
+```{r}
+library(scales)
+
+ss %>% 
   filter(complete.cases(.)) %>% 
   ggplot(aes(x = child, y = adult)) +
-  geom_point(alpha = 0.3) +
+  geom_jitter(alpha = 0.1, size = 2.5, width = 0.3, height = 0.3) +
   geom_text(aes(label = bigram), check_overlap = TRUE) +
-  geom_abline(slope=1, intercept=0, lty = 2) +
-  lims(x = c(2,9), y = c(2,9))
+  scale_x_log10(labels = percent_format()) +
+  scale_y_log10(labels = percent_format()) +
+  geom_abline(color = "gray40", lty = 2) 
 ```
 
 ## Most frequent bigrams for each child
 
 ```{r}
 bigrams_child <- bigrams_df %>% 
+  filter(n_questions_transcript > 5) %>%
   filter(speaker_clean == "child") %>% 
-  mutate(bigram = str_replace_all(bigram, pattern = "0", replacement = "")) %>% # get rid of 0
   count(bigram, child_clean) %>% 
   group_by(child_clean) %>%
   mutate(proportion = n / sum(n))
@@ -415,23 +262,23 @@ bigrams_child <- bigrams_df %>%
 
 ```{r}
 bigrams_child %>% 
-  filter(n > 5) %>% 
-  top_n(1) %>% 
-  ungroup %>% 
-  mutate(bigram = reorder(bigram, proportion)) %>%
+  filter(child_clean != "gia") %>% # gia doesn't have enoug data?
+  group_by(child_clean) %>% 
+  top_n(5) %>% 
   ggplot(aes(bigram, proportion, fill = child_clean)) +
-  geom_col() +
+  geom_col(show.legend = FALSE) +
   labs(x = NULL, y = "proportion of bigrams") +
-  coord_flip() 
+  coord_flip() +
+  facet_wrap(~child_clean, scales = "free")
 ```
-
 
 Now do the same thing, but for each question word type
 
 ```{r}
 bigrams_df %>% 
+  filter(speaker_clean == "child") %>% 
   group_by(question_word) %>% 
-  count(bigram, sort = T) %>% 
+  count(bigram) %>% 
   mutate(proportion = n / sum(n)) %>% 
   top_n(5) %>% 
   arrange(desc(proportion)) %>%
@@ -447,64 +294,221 @@ bigrams_df %>%
 
 ```{r}
 trigrams_df <- all_qs %>% 
-  distinct(sentgloss, .keep_all = T) %>% 
-  unnest_tokens(trigram, sentgloss, token = "ngrams", n = 3)
+  unnest_tokens(trigram, sentgloss, token = "ngrams", n = 3) %>% 
+  filter(str_detect(trigram, "yyy") == F, 
+         str_detect(trigram, "xxx") == F,
+         str_detect(trigram, "0") == F) %>% 
+  select(-gloss)
 ```
 
 ```{r}
 trigram_plot <- trigrams_df %>%
-  group_by(trigram) %>% 
-  count() %>% 
-  top_n(15) %>% 
-  arrange(desc(n)) %>%
-  mutate(trigram = factor(trigram, levels = rev(unique(trigram))))
-
-trigram_plot %>% 
-  ungroup %>%
-  ggplot(aes(trigram, n)) +
-  geom_col(show.legend = FALSE) +
-  labs(x = NULL, y = "count") +
-  coord_flip()
+  group_by(speaker_clean) %>%
+  count(trigram) %>% 
+  top_n(15, n) 
 ```
 
-Plot trigrams by question word type for adult questions
+Now plot.
 
 ```{r}
-trigrams_prop_plot <- trigrams_df %>% 
-  filter(speaker_clean != "child") %>% 
+trigram_plot %<>% 
+  ungroup() %>%
+  arrange(speaker_clean, n) %>% 
+  mutate(order = row_number()) 
+  
+ggplot(trigram_plot, aes(order, n, fill = speaker_clean)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "count") +
+  facet_wrap(~speaker_clean, scales = "free") +
+  scale_x_continuous(
+    breaks = trigram_plot$order,
+    labels = trigram_plot$trigram,
+    expand = c(0,0)
+  ) +
+  coord_flip() 
+```
+
+What about splitting the most frequent trigrams by question type? 
+
+```{r}
+trigrams_by_q <- trigrams_df %>%
+  filter(speaker_clean == "child") %>% 
   group_by(question_word) %>% 
-  count(trigram, sort = T) %>% 
-  mutate(proportion = n / sum(n)) %>% 
+  count(trigram) %>% 
   top_n(5) %>% 
-  arrange(desc(proportion)) %>%
-  mutate(trigram = factor(trigram, levels = rev(unique(trigram)))) %>% 
-  ggplot(., aes(x = trigram, y = proportion, fill = question_word)) +
-  geom_col(show.legend = F) +
-  labs(x = NULL, y = "proportion of trigrams") +
-  labs(title = "Most frequent trigrams in adult questions by question type") +
-  coord_flip() +
+  ungroup
+
+tri_plot_byq <- trigrams_by_q %>% 
+  arrange(question_word, n) %>% 
+  mutate(order = row_number()) 
+
+ggplot(tri_plot_byq, aes(order, n, fill = question_word)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "count",
+       title = "Most common trigrams in children's questions") +
   facet_wrap(~question_word, scales = "free") +
+  scale_x_continuous(
+    breaks = tri_plot_byq$order,
+    labels = tri_plot_byq$trigram,
+    expand = c(0.1,0)
+  ) +
+  coord_flip() +
   theme_bw()
 ```
 
-What about splitting the most frequent trigrams by kid? 
+Now do the same thing for adults' questions
 
 ```{r}
-trigrams_by_kid <- trigrams_df %>%
-  filter(speaker_clean != "child") %>% 
-  group_by(child_clean) %>% 
+trigrams_by_q <- trigrams_df %>%
+  filter(speaker_clean == "adult") %>% 
+  group_by(question_word) %>% 
   count(trigram) %>% 
   top_n(5) %>% 
-  arrange(desc(n)) %>%
-  mutate(trigram = factor(trigram, levels = rev(unique(trigram))))
+  ungroup
 
-trigrams_by_kid %>% 
-  filter(n >= 10) %>% 
-  ungroup %>%
-  ggplot(aes(trigram, n, fill = child_clean)) +
+tri_plot_byq <- trigrams_by_q %>% 
+  arrange(question_word, n) %>% 
+  mutate(order = row_number()) 
+
+ggplot(tri_plot_byq, aes(order, n, fill = question_word)) +
   geom_col(show.legend = FALSE) +
-  labs(x = NULL, y = "count") +
+  labs(x = NULL, y = "count",
+       title = "Most common trigrams in adults' questions") +
+  facet_wrap(~question_word, scales = "free") +
+  scale_x_continuous(
+    breaks = tri_plot_byq$order,
+    labels = tri_plot_byq$trigram,
+    expand = c(0.1,0)
+  ) +
   coord_flip() +
-  facet_wrap(~child_clean, scales = "free")
+  theme_bw()
 ```
 
+## Developmental analyses
+
+Plot the proportion of utterances that were questions as a function of age.
+
+```{r}
+prop_qs_df <- all_qs %>% 
+  filter(n_questions_transcript > 5) %>% 
+  mutate(prop = n_questions_transcript / length_transcript) %>% 
+  group_by(child_clean, age_months, speaker_clean) %>% 
+  summarise(m = mean(prop, na.rm = T)) %>% 
+  group_by(age_months, speaker_clean) %>% 
+  summarise(m = mean(m, na.rm = T),
+            n = n()) %>% 
+  filter(is.na(age_months) == F)
+```
+
+Now plot
+
+```{r}
+prop_qs_df %>% 
+  ggplot(., aes(x = age_months, y = m, size = n)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "loess", se = F, size = 2) +
+  labs(x = "age (months)", y = "Prop. of Utterances",
+       title = "Proportion of utterances that are questions") +
+  langcog::scale_color_solarized() +
+  theme(legend.position = "bottom") +
+  facet_wrap(~speaker_clean, scales = "free_y")
+```
+
+Now we do the same analysis, but split by question word.
+
+```{r}
+dev_plot <- all_qs %>% 
+  filter(n_questions_transcript > 5) %>% 
+  count(question_word, child_clean, speaker_clean, session_id, n_questions_transcript,
+        age_months) %>% 
+  mutate(prop = n / n_questions_transcript) %>% 
+  group_by(child_clean, age_months, question_word, speaker_clean) %>% 
+  summarise(ss_prop = mean(prop, na.rm = T)) %>% 
+  group_by(age_months, question_word, speaker_clean) %>% 
+  summarise(m_prop = mean(ss_prop),
+            n = n()) 
+```
+
+```{r}
+dev_plot %>% 
+  filter(speaker_clean == "child") %>% 
+  ggplot(., aes(x = age_months, y = m_prop, color = question_word)) +
+  geom_point(aes(size = n), alpha = 0.2) +
+  geom_smooth(se=F, method = "loess", size = 2) +
+  xlim(10, 68) +
+  labs(y = "Prop. of Questions", x= "Age (months)",
+       title = "Development of children's question asking") +
+  guides(color = F) +
+  langcog::scale_color_solarized() +
+  facet_wrap(~question_word, scales = "free") +
+  theme(legend.position = "top") +
+  theme_bw()
+```
+
+### Analyze single word questions
+
+```{r}
+all_qs %<>% 
+  rowwise() %>% 
+  mutate(sentence_len = length(strsplit(sentgloss,' ')[[1]]))
+```
+
+
+```{r}
+single_words <- all_qs %>% 
+  filter(sentence_len == 1, n_questions_transcript > 5) %>% 
+  count(question_word, child_clean, speaker_clean, session_id, n_questions_transcript,
+        age_months) %>% 
+  mutate(prop = n / n_questions_transcript) %>% 
+  group_by(child_clean, age_months, question_word, speaker_clean) %>% 
+  summarise(ss_prop = mean(prop, na.rm = T)) %>% 
+  group_by(age_months, question_word, speaker_clean) %>% 
+  summarise(m_prop = mean(ss_prop),
+            n = n()) 
+```
+
+Plot
+
+```{r}
+single_words %>% 
+  filter(speaker_clean == "child") %>% 
+  ggplot(., aes(x = age_months, y = m_prop, color = question_word)) +
+  geom_point(aes(size = n), alpha = 0.2) +
+  geom_smooth(se=F, method = "loess", size = 2) +
+  xlim(10, 68) +
+  labs(y = "Prop. of Questions", x= "Age (months)",
+       title = "Development of children's single word questions") +
+  guides(color = F) +
+  langcog::scale_color_solarized() +
+  facet_wrap(~question_word, scales = "free") +
+  theme(legend.position = "top") +
+  theme_bw()
+```
+
+What are the single word questions in the other category?
+
+```{r}
+single_other <- all_qs %>% 
+  filter(question_word == "other", sentence_len == 1)
+```
+
+```{r}
+single_other_plot <- single_other %>% 
+  count(gloss, speaker_clean) %>% 
+  group_by(speaker_clean) %>% 
+  top_n(15, n) %>% 
+  ungroup() %>%
+  arrange(speaker_clean, n) %>% 
+  mutate(order = row_number()) 
+
+ggplot(single_other_plot, aes(order, n, fill = speaker_clean)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "count") +
+  facet_wrap(~speaker_clean, scales = "free") +
+  scale_x_continuous(
+    breaks = single_other_plot$order,
+    labels = single_other_plot$gloss,
+    expand = c(0,0)
+  ) +
+  coord_flip() 
+```

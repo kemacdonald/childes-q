@@ -1,0 +1,24 @@
+---
+title: "CHILDES Questions: light NLP analyses"
+output: html_notebook
+---
+
+```{r, include = F}
+knitr::opts_chunk$set(echo=T, warning=FALSE, message=FALSE,
+                      fig.width=12, fig.height=8)
+```
+
+```{r}
+rm(list=ls())
+library(ggrepel); library(magrittr)
+library(stringr); library(knitr)
+library(tidyverse); library(directlabels); 
+library(tidytext); library(forcats)
+theme_set(ggthemes::theme_few())
+```
+
+## Read data
+
+```{r}
+all_qs <- read_csv("../../data/queries/childes_questions.csv")
+```
