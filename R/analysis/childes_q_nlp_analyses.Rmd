@@ -1,5 +1,5 @@
 ---
-title: "CHILDES Questions: light NLP analyses"
+title: "CHILDES Questions: NLP analyses"
 output: html_notebook
 ---
 
@@ -22,3 +22,72 @@ theme_set(ggthemes::theme_few())
 ```{r}
 all_qs <- read_csv("../../data/queries/childes_questions.csv")
 ```
+
+
+## Sentiment analysis
+
+Tidy data
+
+```{r}
+tidy_qs <- all_qs %>% 
+  unnest_tokens(word, sentgloss) %>% 
+  select(-gloss)
+```
+
+Join with sentiment information
+
+```{r}
+bing_word_counts <- tidy_qs %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  ungroup()
+```
+
+```{r}
+bing_word_counts %>% 
+  group_by(sentiment) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(y = "Contribution to sentiment",
+       x = NULL) +
+  coord_flip()
+```
+
+
+
+```{r}
+nrc_word_counts <- tidy_qs %>%
+  filter(speaker_clean != "child") %>% 
+  inner_join(get_sentiments("nrc")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  ungroup()
+```
+Plot
+
+```{r}
+nrc_word_counts %>% 
+  group_by(sentiment) %>% 
+  summarise(count = sum(n)) %>% 
+  ggplot(aes(x = sentiment, y = count)) + 
+  geom_col()
+```
+
+What are the most common words in each category?
+
+```{r}
+nrc_word_counts %>% 
+  group_by(sentiment) %>% 
+  top_n(5, n) %>% 
+  mutate(word = reorder(word, n)) %>% 
+  ggplot(., aes(x = word, y = n, fill = sentiment)) +
+  geom_col(show.legend = F) +
+  labs(x = NULL, y = "count") +
+  facet_wrap(~sentiment, scales = "free") +
+  coord_flip()
+
+```
+

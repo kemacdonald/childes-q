@@ -92,7 +92,9 @@ all_qs %>%
   facet_wrap(~child_clean, scales = "free_y")
 ```
 
-## Word frequencies in question utterances
+## Tidy analyses 
+
+Word frequencies in question utterances
 
 First, let's test the unnest_tokens() function on a subset of the data
 
