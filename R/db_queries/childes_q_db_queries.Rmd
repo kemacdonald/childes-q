@@ -1,10 +1,14 @@
 ---
-title: "Childes Questions"
+title: "Childes Questions DB Queries"
 author: "Kyle MacDonald"
-output: html_document
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
 ---
 
 ## Set up
+
+Clear workspace and load relevant packages
 
 ```{r}
 rm(list=ls())
@@ -12,14 +16,15 @@ library(magrittr)
 library(stringr)
 library(knitr)
 library(tidyverse)
+library(dbplyr)
 library(RMySQL)
 ```
 
-## Connect to the CHILDES db 
+## Connect to the CHILDES database 
 
-Code adapted from the `dplyr` databases [vignette](https://cran.r-project.org/web/packages/dplyr/vignettes/databases.html)
+Code adapted from the `dplyr` databases [vignette](https://cran.r-project.org/web/packages/dplyr/vignettes/databases.html).
 
-Note that prior to running this code, you need to make sure that the mysql server is running. In the terminal, run: `mysql.server start`
+Note that prior to running this code, you need to make sure that the local mysql server is running. In the terminal, run: `mysql.server start`
 
 ```{r}
 db <- src_mysql(host = "localhost", user='root', password='mbrllngs12', 
@@ -35,6 +40,8 @@ words <- tbl(db, "words")
 ```
 
 ## Extract all utterances with question words
+
+Note the use of the *collect()* function to actually return the results of our sql queryt
 
 ```{r}
 all_qs <- words %>% 
@@ -55,7 +62,7 @@ n_transcripts <- all_qs %>%
          session_id = 1:n_sessions)
 
 # join n_sessions info with rest of data
-all_qs %<>% left_join(., n_transcripts)
+all_qs %<>% left_join(., n_transcripts, by = c("child", "length_transcript", "n_sessions", "session_id"))
 ```
 
 ## Clean up the data 
@@ -68,7 +75,6 @@ all_qs %<>%
   distinct(sentgloss, .keep_all = T)
 ```
 
-
 ```{r}
 days_in_month <- 30.436875
 
@@ -78,9 +84,12 @@ all_qs %<>%
   mutate(age_months = round(age / days_in_month, 0),
          child_clean = ifelse(child == "--", corpus, child),
          speaker_clean = ifelse(speaker == "CHI", "child", "adult"),
-         parent_type = ifelse(speaker == "MOT", "mother", 
-                              ifelse(speaker == "FAT", "father", 
-                                     "other_adult")))
+         parent_type = case_when(
+           speaker == "MOT" ~ "mother",
+           speaker == "FAT" ~ "father",
+           TRUE ~ "other_adult"
+         )
+  )
 ```
 
 Clean up child variable. Need to fix this on the database end.
@@ -88,31 +97,37 @@ Clean up child variable. Need to fix this on the database end.
 ```{r}
 all_qs %<>% 
   ungroup %>% 
-  mutate(child_clean = ifelse(str_detect(child, "ale"), "alex",
-                              ifelse(str_detect(child, "eth"), "ethan",
-                                     ifelse(str_detect(child, "lil"), "lily",
-                                            ifelse(str_detect(child, "nai"), "naima", 
-                                                   ifelse(str_detect(child, "vio"), "violet", 
-                                                          ifelse(str_detect(child, "wil"), "william",
-                                                                 ifelse(str_detect(child, "n"), "naomi",
-                                                                        child)))))))) %>% 
+  mutate(child_clean = case_when(
+    str_detect(child, "ale") ~ "alex",
+    str_detect(child, "eth") ~ "ethan",
+    str_detect(child, "lil") ~ "lily",
+    str_detect(child, "nai") ~ "naima",
+    str_detect(child, "vio") ~ "violet", 
+    str_detect(child, "wil") ~ "william",
+    str_detect(child, "n") ~ "naomi",
+    TRUE ~ child
+    )
+  ) %>% 
   select(-child)
 ```
 
 ```{r}
 all_qs %<>% 
-  mutate(question_word = ifelse(str_detect(gloss, "why"), "why", 
-                              ifelse(str_detect(gloss, "what"), "what",
-                                     ifelse(str_detect(gloss, "where"), "where",
-                                            ifelse(str_detect(gloss, "who"), "who",
-                                                   ifelse(str_detect(gloss, "^how"), "how",
-                                                          ifelse(str_detect(gloss, "when"), "when",
-                                                                 ifelse(str_detect(gloss, "which"), "which",
-                                                                        ifelse(str_detect(gloss, "whose"), "whose",
-                                                                               ifelse(str_detect(gloss, "whom"), "whom",
-                                                                                      ifelse(str_detect(gloss, "can"), "can", 
-                "other")))))))))),
-         utt_number = as.numeric(utt_number))
+  mutate(question_word = case_when(
+    str_detect(gloss, "why") ~ "why", 
+    str_detect(gloss, "what") ~ "what",
+    str_detect(gloss, "where") ~ "where",
+    str_detect(gloss, "who") ~ "who",
+    str_detect(gloss, "^how") ~ "how",
+    str_detect(gloss, "when") ~ "when",
+    str_detect(gloss, "which") ~ "which",
+    str_detect(gloss, "whose") ~ "whose",
+    str_detect(gloss, "whom") ~ "whom",
+    str_detect(gloss, "can") ~ "can",
+    TRUE ~ "other"
+  ),
+  utt_number = as.numeric(utt_number)
+  )
 ```
 
 Get the total number of questions asked by adults and child for each session, so we can normalize later.
@@ -123,12 +138,14 @@ n_questions <- all_qs %>% select(child_clean, speaker_clean, session_id, sentglo
 n_questions %<>% 
   group_by(child_clean, speaker_clean, session_id) %>% 
   summarise(n_questions_transcript = n())
+
+n_questions
 ```
 
 Join the total number of questions with the rest of the data
 
 ```{r}
-all_qs %<>% left_join(., n_questions)
+all_qs %<>% left_join(., n_questions, by = c("session_id", "child_clean", "speaker_clean"))
 ```
 
 Save as csv
