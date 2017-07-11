@@ -235,7 +235,7 @@ dbWriteTable(childes_db_con, sachs, name = "words", row.names = F, append = T)
 
 ######################
 
-Let's abstract this into a function!
+Let's abstract this into a function
 
 
 ```{r}

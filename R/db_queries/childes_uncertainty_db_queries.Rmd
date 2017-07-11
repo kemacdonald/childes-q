@@ -7,6 +7,7 @@ output: html_document
 
 ```{r}
 rm(list=ls())
+library(dbplyr)
 library(magrittr)
 library(stringr)
 library(knitr)
@@ -17,12 +18,19 @@ library(lazyeval)
 
 ## Connect to the CHILDES db 
 
-Code adapted from the `dplyr` databases [vignette](https://cran.r-project.org/web/packages/dplyr/vignettes/databases.html)
+Code adapted from the `dbplyr` databases [vignette](https://cran.r-project.org/web/packages/dbplyr/vignettes/dbplyr.html).
 
 Note that prior to running this code, you need to make sure that the mysql server is running. In the terminal, run: `mysql.server start`
 
 ```{r}
-db <- src_mysql(host = "localhost", user='root', password='mbrllngs12', dbname='childes')
+db <- DBI::dbConnect(RMySQL::MySQL(), 
+  host = "localhost",
+  user = "root",
+  password = rstudioapi::askForPassword("Database password"),
+  dbname  = "childes"
+)
+
+dbListTables(db)
 ```
 
 Get the relevant tables from the database
@@ -39,9 +47,9 @@ words <- tbl(db, "words")
 # start the clock
 ptm <- proc.time()
 
-all_qs <- words %>% 
-  filter(gloss %in% c("maybe", "sometimes", "know", "unsure", "certain", "uncertain")) %>% 
-  collect(n = Inf) 
+all_qs_db <- words %>% filter(gloss %in% c("maybe", "sometimes", "know", "unsure", "certain", "uncertain")) 
+
+all_qs <- all_qs_db %>% collect(n = Inf) 
 
 # Stop the clock
 proc.time() - ptm

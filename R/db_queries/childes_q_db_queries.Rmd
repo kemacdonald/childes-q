@@ -22,13 +22,19 @@ library(RMySQL)
 
 ## Connect to the CHILDES database 
 
-Code adapted from the `dplyr` databases [vignette](https://cran.r-project.org/web/packages/dplyr/vignettes/databases.html).
+Code adapted from the `dbplyr` databases [vignette](https://cran.r-project.org/web/packages/dbplyr/vignettes/dbplyr.html).
 
 Note that prior to running this code, you need to make sure that the local mysql server is running. In the terminal, run: `mysql.server start`
 
 ```{r}
-db <- src_mysql(host = "localhost", user='root', password='mbrllngs12', 
-                dbname='childes_km')
+db <- DBI::dbConnect(RMySQL::MySQL(), 
+  host = "localhost",
+  user = "root",
+  password = rstudioapi::askForPassword("Database password"),
+  dbname  = "childes_km"
+)
+
+dbListTables(db)
 ```
 
 Get the relevant tables from the database
@@ -41,15 +47,20 @@ words <- tbl(db, "words")
 
 ## Extract all utterances with question words
 
-Note the use of the *collect()* function to actually return the results of our sql queryt
+Note the use of the *collect()* function to actually return the results of our sql query. If we don't include the collect function, then the dplyr code will never "touch" the database.
 
 ```{r}
-all_qs <- words %>% 
-    filter(line_terminator == "?") %>% 
-    collect(n = Inf) 
+# create SQL query 
+all_qs_db <- words %>% filter(line_terminator == "?")  
+
+# show the query translated to SQL
+all_qs_db %>% show_query()
+    
+# collect the results so we can write to file (this will take some time)
+all_qs <- all_qs_db %>% collect(n = Inf) 
 ```
 
-Create session ID for each transcript
+Create session ID for each transcript.
 
 ```{r}
 # get the number of transcripts for each child
@@ -92,7 +103,7 @@ all_qs %<>%
   )
 ```
 
-Clean up child variable. Need to fix this on the database end.
+Clean up child variable. Need to fix this in the Chat parser.
 
 ```{r}
 all_qs %<>% 
