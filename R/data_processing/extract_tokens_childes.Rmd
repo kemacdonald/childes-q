@@ -28,7 +28,6 @@ Other corpora that we could add:
 Load libraries and helper functions. Set global option to read strings as strings and not factors. This is important for text processing functions to work later on.
 
 ```{r}
-rm(list=ls())
 options(stringsAsFactors = FALSE)
 source("CLANtoR.R")
 source("childes_convert_helpers.R")

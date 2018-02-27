@@ -12,18 +12,17 @@ knitr::opts_chunk$set(echo=T, warning=FALSE, message=FALSE,
 ```
 
 ```{r}
-rm(list=ls())
-library(ggrepel); library(magrittr)
+library(ggrepel); library(magrittr); library(here)
 library(stringr); library(knitr)
 library(tidyverse); library(directlabels); 
 library(tidytext); library(forcats)
-theme_set(ggthemes::theme_few())
+theme_set(theme_minimal())
 ```
 
 ## Read data
 
 ```{r}
-all_qs <- read_csv("../../data/queries/childes_questions.csv")
+all_qs <- read_csv(here("data/queries", "childes_questions.csv"))
 ```
 
 ## Descriptives
@@ -147,10 +146,11 @@ This isn't super informative. So now let's make the same plot but split by the c
 ```{r}
 unigrams_df %>%
   group_by(question_word, word) %>% 
-  count() %>% 
-  top_n(5) %>% 
+  count() %>%
+  group_by(question_word) %>% 
+  top_n(5) %>%
   mutate(word = reorder(word, n)) %>% 
-  ggplot(aes(word, n, fill = question_word)) +
+  ggplot(aes(x = word, y = n, fill = question_word)) +
   geom_col(show.legend = FALSE) +
   labs(x = NULL, y = "count") +
   facet_wrap(~question_word, scales = "free") +
@@ -165,6 +165,7 @@ unigrams_df_filt <- unigrams_df %>% anti_join(stop_words)
 unigrams_df_filt %>%
   group_by(question_word, word) %>% 
   count() %>% 
+  group_by(question_word) %>% 
   top_n(5) %>% 
   mutate(word = reorder(word, n)) %>% 
   ggplot(aes(word, n, fill = question_word)) +
@@ -264,7 +265,7 @@ bigrams_child <- bigrams_df %>%
 
 ```{r}
 bigrams_child %>% 
-  filter(child_clean != "gia") %>% # gia doesn't have enoug data?
+  filter(child_clean != "gia") %>% # gia doesn't have enough data?
   group_by(child_clean) %>% 
   top_n(5) %>% 
   ggplot(aes(bigram, proportion, fill = child_clean)) +

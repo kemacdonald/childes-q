@@ -14,20 +14,20 @@ knitr::opts_chunk$set(echo=T, warning=FALSE, message=FALSE,
 
 
 ```{r}
-rm(list=ls())
 library(magrittr)
+library(here)
 library(stringr)
 library(knitr)
 library(tidyverse)
 library(RMySQL)
 library(directlabels)
-theme_set(ggthemes::theme_few())
+theme_set(theme_minimal())
 ```
 
 ## Read data
 
 ```{r}
-all_qs <- read_csv("../../data/queries/childes_uncertainty_terms.csv")
+all_qs <- read_csv(here("data/queries", "childes_uncertainty_terms.csv"))
 ```
 
 ## Descriptives
@@ -50,7 +50,7 @@ all_qs %>%
   summarise(count = n()) %>% 
   ggplot(., aes(x = gloss, y = count)) +
   geom_bar(stat = "identity") +
-  labs(x = "Uncertainty Word") +
+  labs(x = "Uncertainty Term") +
   facet_wrap(~speaker_clean)
 ```
 
@@ -170,6 +170,7 @@ all_qs %>%
   group_by(age_months, know_type, speaker_clean) %>% 
   summarise(m = mean(prop, na.rm = T),
             n = n()) %>% 
+  filter(speaker_clean == "child") %>% 
   ggplot(., aes(x = age_months, y = m, color = know_type)) +
   geom_point(aes(size = n), alpha = 0.3) +
   geom_smooth(se=F, method = "loess", size = 2) +

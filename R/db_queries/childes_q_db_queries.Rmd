@@ -51,7 +51,7 @@ Note the use of the *collect()* function to actually return the results of our s
 
 ```{r}
 # create SQL query 
-all_qs_db <- words %>% filter(line_terminator == "?")  
+all_qs_db <- words %>% filter(line_terminator == "?")
 
 # show the query translated to SQL
 all_qs_db %>% show_query()
@@ -73,7 +73,7 @@ n_transcripts <- all_qs %>%
          session_id = 1:n_sessions)
 
 # join n_sessions info with rest of data
-all_qs %<>% left_join(., n_transcripts, by = c("child", "length_transcript", "n_sessions", "session_id"))
+all_qs %<>% left_join(., n_transcripts)
 ```
 
 ## Clean up the data 
